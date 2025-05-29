@@ -31,7 +31,7 @@ python src/audio_classifier.py path/to/your/audiofile.wav
 **Arguments:**
 
 *   `input_audio_file`: (Required) Path to the input audio file (e.g., WAV, MP3, MP4, MOV).
-*   `--model_path`: (Optional) Path to a specific pyAudioAnalysis SVM model file. Defaults to the general speech/music model included with pyAudioAnalysis.
+*   `--model_path`: (Optional) Path to a specific pyAudioAnalysis SVM model file (e.g., `path/to/your/svm_rbf_sm`). The script attempts to auto-detect the default speech/music model (`svm_rbf_sm`) included with your `pyAudioAnalysis` installation. If this detection fails, or if you want to use a custom model, you must provide this path.
 *   `--output_dir`: (Optional) Directory where the output CSV and `.dcsx` files will be saved. Defaults to the same directory as the input audio file.
 
 **Example:**
@@ -68,3 +68,33 @@ To run the tests, navigate to the project root directory and run:
 ```bash
 python -m unittest discover -s tests
 ```
+
+## Troubleshooting
+
+### Model File Not Found
+
+The script relies on `pyAudioAnalysis` and its pre-trained models (e.g., `svm_rbf_sm` for speech/music classification).
+
+*   **Automatic Detection**: The script first tries to automatically locate the default models from your `pyAudioAnalysis` installation.
+*   **Manual Override**: If the automatic detection fails (you'll see an error message like "Model file not found..."), or if you wish to use a different model, you **must** use the `--model_path` argument to provide the full path to the model file.
+
+**Finding your pyAudioAnalysis models:**
+
+The models are usually located within the `pyAudioAnalysis/data` directory of your installed `pyAudioAnalysis` package. The exact location can vary depending on your Python environment and installation method.
+
+1.  You can try to find the `pyAudioAnalysis` installation path (specifically the directory containing the `data` folder) by running this Python snippet:
+    ```python
+    import os
+    try:
+        import pyAudioAnalysis.audioSegmentation
+        # The 'data' directory is typically alongside audioSegmentation.py
+        paa_module_dir = os.path.dirname(pyAudioAnalysis.audioSegmentation.__file__)
+        print(f"pyAudioAnalysis module directory (contains 'data' folder): {paa_module_dir}")
+        print(f"Potential model path: {os.path.join(paa_module_dir, 'data', 'svm_rbf_sm')}")
+    except ImportError:
+        print("pyAudioAnalysis.audioSegmentation not found. Is pyAudioAnalysis installed correctly?")
+    ```
+    Then, look for a `data` subdirectory within the printed path. The speech/music SVM model is typically named `svm_rbf_sm`.
+2.  If you cloned the `pyAudioAnalysis` repository for development, the models are usually in `pyAudioAnalysis/pyAudioAnalysis/data/`.
+
+Once you locate the `svm_rbf_sm` file (or your custom model file), provide its full path to the `--model_path` argument.

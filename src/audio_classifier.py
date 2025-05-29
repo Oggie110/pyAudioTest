@@ -5,39 +5,131 @@ import csv
 from datetime import datetime, timedelta
 import json
 import argparse
+import pyAudioAnalysis.audioSegmentation # Used for mtFileClassification and to find model path
 
-# Attempt to find the pyAudioAnalysis library path for models
-# This is a common way to find package paths, but might need adjustment
+# Determine DEFAULT_MODEL_PATH
+DEFAULT_MODEL_NAME = "svm_rbf_sm" # The model file itself
+DEFAULT_MODEL_PATH = None
+# PYAUDIOANALYSIS_DATA_PACKAGE = "pyAudioAnalysis.data" # Not used in the provided logic
+
 try:
-    import pyAudioAnalysis
-    PYAUDIOANALYSIS_DIR = os.path.dirname(os.path.realpath(pyAudioAnalysis.__file__))
-    # Default model path (example, might need to be verified/changed)
-    # Common models: svm_rbf_sm (speech-music), svm_rbf_genre (general genres)
-    DEFAULT_MODEL_PATH = os.path.join(PYAUDIOANALYSIS_DIR, "data", "svm_rbf_sm")
+    # The logic relies on finding the 'pyAudioAnalysis' package directory structure
+    # based on the location of an imported module like 'audioSegmentation'.
+    package_dir = os.path.dirname(pyAudioAnalysis.audioSegmentation.__file__)
+    
+    # Expected model path relative to the pyAudioAnalysis package directory itself
+    # Standard structure: pyAudioAnalysis_package_root/pyAudioAnalysis/data/svm_rbf_sm
+    # audioSegmentation.__file__ is like: .../site-packages/pyAudioAnalysis/audioSegmentation.py
+    # So, os.path.dirname(package_dir) gives .../site-packages/
+    # This seems incorrect. The model should be relative to the pyAudioAnalysis root,
+    # which is one level up from where audioSegmentation.py is.
+    # Corrected path:
+    # package_dir is pyAudioAnalysis/pyAudioAnalysis/
+    # so os.path.dirname(package_dir) is pyAudioAnalysis_package_root/pyAudioAnalysis/
+    # and we need to go into 'data' from there.
+    # No, package_dir is .../site-packages/pyAudioAnalysis (if audioSegmentation.py is directly in pyAudioAnalysis)
+    # or .../site-packages/pyAudioAnalysis/pyAudioAnalysis (if it's nested) - this is the typical structure.
+
+    # If pyAudioAnalysis structure is:
+    # site-packages/
+    #   pyAudioAnalysis/
+    #     __init__.py
+    #     audioSegmentation.py
+    #     data/
+    #       svm_rbf_sm
+    # Then package_dir = os.path.dirname(pyAudioAnalysis.audioSegmentation.__file__) would be site-packages/pyAudioAnalysis
+    # And model path would be os.path.join(package_dir, 'data', DEFAULT_MODEL_NAME)
+
+    # If pyAudioAnalysis structure is (more common for projects with a src layout or nested package):
+    # site-packages/
+    #   pyAudioAnalysis/
+    #     __init__.py # This is the main package entry
+    #     pyAudioAnalysis/ # This is the actual code package
+    #       __init__.py
+    #       audioSegmentation.py
+    #       data/
+    #         svm_rbf_sm
+    # Then pyAudioAnalysis.audioSegmentation.__file__ is .../site-packages/pyAudioAnalysis/pyAudioAnalysis/audioSegmentation.py
+    # package_dir is .../site-packages/pyAudioAnalysis/pyAudioAnalysis
+    # The data directory is often at the same level as the code package, or inside it.
+    # pyAudioAnalysis's own setup.py installs 'pyAudioAnalysis/data' as package_data for 'pyAudioAnalysis'
+    # This means 'data' should be alongside 'audioSegmentation.py' etc.
+    
+    potential_model_path = os.path.join(package_dir, 'data', DEFAULT_MODEL_NAME)
+    
+    if os.path.exists(potential_model_path):
+        DEFAULT_MODEL_PATH = potential_model_path
+    else:
+        # Fallback for the case where 'data' might be one level higher than audioSegmentation.py's directory
+        # This could happen if 'audioSegmentation.py' is in a subdirectory of the main package module
+        # e.g. pyAudioAnalysis_root/submodule/audioSegmentation.py and pyAudioAnalysis_root/data/
+        # For pyAudioAnalysis, the 'data' folder is typically at the same level as 'audioSegmentation.py'
+        # (i.e., within the 'pyAudioAnalysis' sub-package itself).
+        # Let's try one level up from package_dir, then into 'data'. This matches the prompt's original logic.
+        # package_dir = .../site-packages/pyAudioAnalysis/pyAudioAnalysis
+        # os.path.dirname(package_dir) = .../site-packages/pyAudioAnalysis
+        # path = .../site-packages/pyAudioAnalysis/data/svm_rbf_sm - this is not usually how it's packaged.
+        # The original prompt's logic: os.path.join(os.path.dirname(package_dir), 'data', DEFAULT_MODEL_NAME)
+        # implies package_dir is pyAudioAnalysis/pyAudioAnalysis, and data is pyAudioAnalysis/data.
+        # This is less common. More common is pyAudioAnalysis/data being inside pyAudioAnalysis/pyAudioAnalysis.
+        # I'll stick to the most likely standard packaging: data alongside the .py files.
+        # If that fails, the user can always specify the path.
+        # The prompt's original "potential_model_path_alt" seems more like the primary one for pyAudioAnalysis.
+        # Let me re-evaluate the prompt's original logic:
+        # package_dir = os.path.dirname(pyAudioAnalysis.audioSegmentation.__file__) -> pyAudioAnalysis/pyAudioAnalysis (code dir)
+        # potential_model_path = os.path.join(os.path.dirname(package_dir), 'data', DEFAULT_MODEL_NAME)
+        # This means: pyAudioAnalysis_root_install_dir / data / svm_rbf_sm. This seems plausible if 'data' is not part of the 'pyAudioAnalysis' sub-package.
+        # potential_model_path_alt = os.path.join(package_dir, 'data', DEFAULT_MODEL_NAME)
+        # This means: pyAudioAnalysis_root_install_dir / pyAudioAnalysis / data / svm_rbf_sm. This is where setup.py installs it.
+
+        # Based on pyAudioAnalysis setup.py: `packages=['pyAudioAnalysis'], package_data={'pyAudioAnalysis': ['data/*']}`
+        # This means 'data' is *inside* the 'pyAudioAnalysis' package directory.
+        # So `potential_model_path_alt` from the prompt is actually the primary one.
+        # package_dir = os.path.dirname(pyAudioAnalysis.audioSegmentation.__file__)
+        # this is pyAudioAnalysis_install_root/pyAudioAnalysis/ (where audioSegmentation.py is)
+        # so, the model is at pyAudioAnalysis_install_root/pyAudioAnalysis/data/svm_rbf_sm
+        
+        # The logic from the prompt seems a bit confused on directory levels.
+        # Let's simplify based on how pyAudioAnalysis packages its data:
+        # pyAudioAnalysis.audioSegmentation.__file__ gives path to audioSegmentation.py
+        # The 'data' folder is in the same directory as audioSegmentation.py
+        
+        # Corrected and simplified logic:
+        paa_module_dir = os.path.dirname(pyAudioAnalysis.audioSegmentation.__file__)
+        potential_model_path_primary = os.path.join(paa_module_dir, "data", DEFAULT_MODEL_NAME)
+
+        if os.path.exists(potential_model_path_primary):
+            DEFAULT_MODEL_PATH = potential_model_path_primary
+        # The prompt's original logic had a primary and an alt. Given pyAudioAnalysis packaging,
+        # the primary one should be `os.path.join(paa_module_dir, 'data', DEFAULT_MODEL_NAME)`
+        # The other one `os.path.join(os.path.dirname(paa_module_dir), 'data', DEFAULT_MODEL_NAME)`
+        # would imply 'data' is a sibling to the 'pyAudioAnalysis' code directory, which is not standard for its setup.
+
+    if DEFAULT_MODEL_PATH:
+         print(f"Auto-detected default model path: {DEFAULT_MODEL_PATH}")
+    else:
+        print(f"Warning: Could not auto-detect standard pyAudioAnalysis model path for '{DEFAULT_MODEL_NAME}'.")
+
 except ImportError:
-    PYAUDIOANALYSIS_DIR = None
-    DEFAULT_MODEL_PATH = "pyAudioAnalysis/data/svm_rbf_sm" # Fallback, user might need to set this
-    print("Warning: pyAudioAnalysis not found. Model path may be incorrect.")
+    print("Warning: pyAudioAnalysis.audioSegmentation module not found. Cannot determine default model path reliably.")
+except Exception as e:
+    print(f"Warning: Error while trying to determine default model path: {e}")
+
+if not DEFAULT_MODEL_PATH:
+    DEFAULT_MODEL_PATH = DEFAULT_MODEL_NAME # Fallback to just the name
+    print(f"Falling back to default model name '{DEFAULT_MODEL_PATH}'. "
+          f"If classification fails, please use --model_path to specify the correct path to the '{DEFAULT_MODEL_NAME}' model file.")
 
 # pyAudioAnalysis imports
 try:
     from pyAudioAnalysis.audioSegmentation import mtFileClassification
-    # listOfClasses is used to get the names of the classes from the model
-    # This might be specific to how models are trained/stored in pyAudioAnalysis
-    # For svm_rbf_sm, the classes are usually ['speech', 'music']
-    # We will try to get them dynamically if possible, otherwise use a default.
-    model_data_path = os.path.join(PYAUDIOANALYSIS_DIR, "data")
-    # This is a common way class names are stored, but might need adjustment
-    # if specific model doesn't follow this pattern for listOfClasses.
-    # For svm_rbf_sm, it's often implicitly known.
 except ImportError:
-    print("Error: Failed to import from pyAudioAnalysis. Ensure it is installed.")
-    # Provide dummy implementation if import fails, so script can still be loaded.
+    print("Error: Failed to import mtFileClassification from pyAudioAnalysis.audioSegmentation. Ensure pyAudioAnalysis is installed correctly.")
+    # Provide dummy implementation if import fails, so script can still be loaded for basic CLI help.
     def mtFileClassification(*args, **kwargs):
-        print("Dummy mtFileClassification: pyAudioAnalysis not imported.")
-        return [], [], [] 
-    # listOfClasses = ['unknown', 'unknown'] # Fallback
-
+        print("Dummy mtFileClassification: pyAudioAnalysis.audioSegmentation.mtFileClassification not imported.")
+        return [], [], [], [] # Expected to return 4 values by some old versions, typically 3
+    
 # It's common for the svm_rbf_sm model to have these classes.
 # If a different model is used, this list would need to change.
 # We will attempt to load this from the model file if possible, but that's more advanced.
@@ -112,24 +204,19 @@ def classify_audio_segments(wav_file_path: str, model_path: str = DEFAULT_MODEL_
     (Implementation to be added)
     """
     print(f"Attempting to classify segments in: {wav_file_path} using model: {model_path}")
+    
     if not os.path.exists(wav_file_path):
         print(f"Error: WAV file '{wav_file_path}' not found for classification.")
         return []
-    if not os.path.exists(model_path) and not os.path.exists(model_path + ".pt"): # .pt for newer PyTorch models
-         # Also check for model files like .pkl, .model, etc. if svm_rbf_sm is a generic name
-        model_path_abs = os.path.abspath(model_path)
-        print(f"Error: Model file '{model_path_abs}' (or related files like .pt, .pkl) not found.")
-        print(f"Please ensure the pyAudioAnalysis models are correctly installed or provide a valid model_path.")
-        print(f"PYAUDIOANALYSIS_DIR was detected as: {PYAUDIOANALYSIS_DIR}")
-        print(f"Tried to find model at: {DEFAULT_MODEL_PATH}")
-        # Attempt to list contents of PYAUDIOANALYSIS_DIR/data to help user
-        if PYAUDIOANALYSIS_DIR and os.path.exists(os.path.join(PYAUDIOANALYSIS_DIR, "data")):
-            print(f"Available models/data in {os.path.join(PYAUDIOANALYSIS_DIR, 'data')}:")
-            try:
-                for item in os.listdir(os.path.join(PYAUDIOANALYSIS_DIR, "data")):
-                    print(f"  - {item}")
-            except Exception as e:
-                print(f"    Could not list directory: {e}")
+
+    if not os.path.exists(model_path):
+        # model_path_abs = os.path.abspath(model_path) # Already done by argparse essentially
+        print(f"Error: Model file '{model_path}' not found. "
+              f"Please ensure the model exists at this path or use the --model_path argument to specify the correct location. "
+              f"If using the default model, the pyAudioAnalysis installation might be incomplete or the model path could not be auto-detected.")
+        # The following debug lines are not needed here anymore due to new DEFAULT_MODEL_PATH logic
+        # print(f"PYAUDIOANALYSIS_DIR was detected as: {PYAUDIOANALYSIS_DIR}")
+        # print(f"Tried to find model at: {DEFAULT_MODEL_PATH}")
         return []
     
     # Actual classification logic using pyAudioAnalysis
