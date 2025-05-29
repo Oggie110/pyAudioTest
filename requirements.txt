@@ -1,0 +1,2 @@
+pyAudioAnalysis
+# Add other Python dependencies here if identified
